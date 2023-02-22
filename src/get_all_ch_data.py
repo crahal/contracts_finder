@@ -14,6 +14,11 @@ from bs4 import BeautifulSoup
 from ftplib import FTP
 
 
+def make_path(path):
+    """ helper function: make paths if they don't exist"""
+    if os.path.exists(path) is False: os.mkdir(path)
+
+
 def get_free_data_product(url, path):
     """
      Gets the bulk download of the free data product.
@@ -29,6 +34,7 @@ def get_free_data_product(url, path):
      """
 
     r = requests.get(url)
+    make_path(path)
     if r.ok:
         soup = BeautifulSoup(r.text, features="html.parser")
         for a in soup.find_all('a', href=True):
@@ -57,6 +63,7 @@ def get_psc_data(url, path):
                      None
      """
     r = requests.get(url)
+    make_path(path)
     if r.ok:
         soup = BeautifulSoup(r.text, features="html.parser")
         for a in soup.find_all('a', href=True):
@@ -82,6 +89,7 @@ def get_accounts_data(url, path):
                      None
      """
     r = requests.get(url)
+    make_path(path)
     if r.ok:
         soup = BeautifulSoup(r.text, features="html.parser")
         for a in soup.find_all('a', href=True):
