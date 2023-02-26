@@ -1,5 +1,17 @@
+#!/usr/bin/env python3
+"""
+Scrapes Contracts Finder Data.
+
+Usage:
+    nohup python contracts_finder.py &
+
+Authors:
+    github.com\crahal: 26-02-2023
+    github.com\BenGoodair: ??-??-2022
+"""
+
+
 import numpy as np
-import traceback
 import time
 import os
 import csv
@@ -7,6 +19,7 @@ import re
 import logging
 from bs4 import BeautifulSoup
 from datetime import date
+from selenium.common import TimeoutException
 from tqdm import tqdm
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -103,104 +116,167 @@ def get_page_data_from_html(html_source_code):
     page_dict = {}
     commissioner = soup.find_all(lambda tag: tag.name == 'div' and
                                              tag.get('class') == ['standard-col'])[0]
-    publication_date = soup.find_all(lambda tag: tag.name == 'div' and
-                                                 tag.get('class') == ['search-no-top-margin'])
     contract_details = list(soup.find_all(lambda tag: tag.name == 'div' and
                                                       tag.get('class') == ['content-block']))
     contract_details2 = list([element.get_text() for element in contract_details])
     string_version = "".join(contract_details2)
     string_version = "".join([s for s in string_version.strip().splitlines(True) if s.strip()])
-    page_dict['commissioner'] = [element.get_text() for element in commissioner][0]
+    try:
+        page_dict['commissioner'] = [element.get_text() for element in commissioner][0]
+    except ValueError:
+        page_dict['commissioner'] = np.nan
 
     refno = string_version[string_version.find('Procurement reference'):string_version.
         find('Published date', string_version.find('Procurement reference'))]
-    if 'tender' in refno.lower():
-        page_dict['reference_no'] = refno.split('tender_')[1]
-    else:
-        page_dict['reference_no'] = refno.split('reference')[1]
-    page_dict['title'] = list([element.get_text() for element in result_header[0: len(result_header)]])[0]
-    page_dict['description'] = string_version[string_version.find('Description') +
-                                              len('Description'):string_version.rfind('More')]
-    page_dict['contract_SIC'] = string_version[string_version.find('Industry') +
-                                               len('Industry'):string_version.rfind('Location')]
-    page_dict['contract_location'] = string_version[string_version.find('Location of contract') +
-                                                    len('Location of contract'):string_version.
-        find('Value', string_version.find('Location of contract'))]
-    page_dict['published_date'] = string_version[string_version.
-                                                     find('Published date') +
-                                                 len('Published date'):string_version.
-        find('Closing date', string_version.find('Published date'))]
-    page_dict['closing_date'] = string_version[string_version.find('Closing date') +
-                                               len('Closing date'):
-                                               string_version.rfind('Closing time')]
-    page_dict['awarded_date'] = string_version[string_version.
-                                                   find('Awarded date') +
-                                               len('Awarded date'):
-                                               string_version.rfind('Contract start date')]
-    page_dict['contract_start_date'] = string_version[string_version.
-                                                          find('Contract start date\n') +
-                                                      len('Contract start date\n'):string_version.
-        find('Contract end date', string_version.find('Contract start date'))]
-    page_dict['contract_end_date'] = string_version[string_version.
-                                                        find('Contract end date') +
-                                                    len('Contract end date'):
-                                                    string_version.rfind('Contract type')]
-    page_dict['contract_type'] = string_version[string_version.find('Contract type') +
-                                                len('Contract type'):
-                                                string_version.rfind('Procedure type')]
-    page_dict['suitable_for_SMEs'] = string_version[string_version.find('SMEs?') + len('SMEs?'):
-                                                    string_version.rfind('Contract is suitable for VCSEs')]
-    page_dict['suitable_for_VCSEs'] = string_version[string_version.find('VCSEs?') + len('VCSEs?'):
-                                                     string_version.rfind('Description')]
-    page_dict['advertised_value'] = string_version[
-                                    string_version.find('Value of contract') +
-                                    len('Value of contract'):
-                                    string_version.rfind('Procurement reference')]
-    page_dict['awarded_value'] = string_version[
-                                 string_version.find('Total value of contract') +
-                                 len('Total value of contract'):
-                                 string_version.rfind('This contract')]
-    page_dict['suppliers_n'] = int(string_version[string_version.find('was awarded to ') +
-                                              len('was awarded to '):string_version.
-        find('\n', string_version.find('was awarded to'))].split(' ')[0])
-    page_dict['commissioner_name'] = string_version[string_version.find('Contact name') +
-                                                    len('Contact name'):
-                                                    string_version.rfind('Address')]
-    page_dict['commissioner_address'] = string_version[string_version.find('Contact name') +
-                                                       len('Contact name'):string_version.rfind('Email')]
-    if 'supplier.' in string_version:
-        suppliers_string = string_version[string_version.find('supplier.\n') + len('supplier.\n'):
-                                          string_version.find('\nAbout the buyer')]
-    else:
-        suppliers_string = string_version[string_version.find('suppliers.\n') + len('suppliers.\n'):
-                                          string_version.find('\nAbout the buyer')]
-    suppliers_string = suppliers_string.split('\n')
-    supplier_name = []
-    supplier_address = []
-    supplier_reference = []
-    supplier_sme = []
-    supplier_vcse = []
-    for line in range(len(suppliers_string)):
-        if suppliers_string[line] == "Show supplier information":
-            supplier_name.append(suppliers_string[line-1])
-            if suppliers_string[line+1].lower().startswith('address'):
-                add_line = suppliers_string[line+1]
-                supplier_address.append(add_line[7:add_line.find(' Reference')])
-                supplier_reference.append(add_line[add_line.find(' Reference') + len(' Reference'):
-                                                   add_line.find('Supplier')])
-                if 'Supplier is SME?Yes' in add_line:
-                    supplier_sme.append('Yes')
-                else:
-                    supplier_sme.append('No')
-                if 'Supplier is VCSE?Yes' in add_line:
-                    supplier_vcse.append('Yes')
-                else:
-                    supplier_vcse.append('No')
-    page_dict['supplier_name'] = supplier_name
-    page_dict['supplier_address'] = supplier_address
-    page_dict['supplier_reference'] = supplier_reference
-    page_dict['supplier_is_VCSE'] = supplier_vcse
-    page_dict['supplier_is_SME'] = supplier_sme
+    try:
+        if 'tender' in refno.lower():
+            page_dict['reference_no'] = refno.split('tender_')[1]
+        else:
+            page_dict['reference_no'] = refno.split('reference')[1]
+    except ValueError:
+        page_dict['reference_no'] = np.nan
+    try:
+        page_dict['title'] = list([element.get_text() for element in result_header[0: len(result_header)]])[0]
+    except ValueError:
+        page_dict['title'] = np.nan
+    try:
+        page_dict['description'] = string_version[string_version.find('Description') +
+                                                  len('Description'):string_version.rfind('More')]
+    except ValueError:
+        page_dict['description'] = np.nan
+    try:
+        page_dict['contract_SIC'] = string_version[string_version.find('Industry') +
+                                                   len('Industry'):string_version.rfind('Location')]
+    except ValueError:
+        page_dict['contract_SIC'] = np.nan
+    try:
+        page_dict['contract_location'] = string_version[string_version.find('Location of contract') +
+                                                        len('Location of contract'):string_version.
+            find('Value', string_version.find('Location of contract'))]
+    except ValueError:
+        page_dict['contract_location'] = np.nan
+    try:
+        page_dict['published_date'] = string_version[string_version.
+                                                         find('Published date') +
+                                                     len('Published date'):string_version.
+            find('Closing date', string_version.find('Published date'))]
+    except ValueError:
+        page_dict['published_date'] = np.nan
+    try:
+        page_dict['closing_date'] = string_version[string_version.find('Closing date') +
+                                                   len('Closing date'):
+                                                   string_version.rfind('Closing time')]
+    except ValueError:
+        page_dict['closing_date'] = np.nan
+    try:
+        page_dict['awarded_date'] = string_version[string_version.
+                                                       find('Awarded date') +
+                                                   len('Awarded date'):
+                                                   string_version.rfind('Contract start date')]
+    except ValueError:
+        page_dict['awarded_date'] = np.nan
+    try:
+        page_dict['contract_start_date'] = string_version[string_version.
+                                                              find('Contract start date\n') +
+                                                          len('Contract start date\n'):string_version.
+            find('Contract end date', string_version.find('Contract start date'))]
+    except ValueError:
+        page_dict['contract_start_date'] = np.nan
+    try:
+        page_dict['contract_end_date'] = string_version[string_version.
+                                                            find('Contract end date') +
+                                                        len('Contract end date'):
+                                                        string_version.rfind('Contract type')]
+    except ValueError:
+        page_dict['contract_end_date'] = np.nan
+    try:
+        page_dict['contract_type'] = string_version[string_version.find('Contract type') +
+                                                    len('Contract type'):
+                                                    string_version.rfind('Procedure type')]
+    except ValueError:
+        page_dict['contract_type'] = np.nan
+
+    try:
+        page_dict['suitable_for_SMEs'] = string_version[string_version.find('SMEs?') + len('SMEs?'):
+                                                        string_version.rfind('Contract is suitable for VCSEs')]
+    except ValueError:
+        page_dict['suitable_for_SMEs'] = np.nan
+    try:
+        page_dict['suitable_for_VCSEs'] = string_version[string_version.find('VCSEs?') + len('VCSEs?'):
+                                                         string_version.rfind('Description')]
+    except ValueError:
+        page_dict['suitable_for_VCSEs'] = np.nan
+    try:
+        page_dict['advertised_value'] = string_version[
+                                        string_version.find('Value of contract') +
+                                        len('Value of contract'):
+                                        string_version.rfind('Procurement reference')]
+    except ValueError:
+        page_dict['advertised_value']
+    try:
+        page_dict['awarded_value'] = string_version[
+                                     string_version.find('Total value of contract') +
+                                     len('Total value of contract'):
+                                     string_version.rfind('This contract')]
+    except ValueError:
+        page_dict['awarded_value'] = np.nan
+    try:
+        page_dict['suppliers_n'] = int(string_version[string_version.find('was awarded to ') +
+                                                  len('was awarded to '):string_version.
+            find('\n', string_version.find('was awarded to'))].split(' ')[0])
+    except ValueError:
+        page_dict['suppliers_n'] = np.nan
+    try:
+        page_dict['commissioner_name'] = string_version[string_version.find('Contact name') +
+                                                        len('Contact name'):
+                                                        string_version.rfind('Address')]
+    except ValueError:
+        page_dict['commissioner_name'] = np.nan
+    try:
+        page_dict['commissioner_address'] = string_version[string_version.find('Contact name') +
+                                                           len('Contact name'):string_version.rfind('Email')]
+    except ValueError:
+        page_dict['commissioner_address'] = np.nan
+    try:
+        if 'supplier.' in string_version:
+            suppliers_string = string_version[string_version.find('supplier.\n') + len('supplier.\n'):
+                                              string_version.find('\nAbout the buyer')]
+        else:
+            suppliers_string = string_version[string_version.find('suppliers.\n') + len('suppliers.\n'):
+                                              string_version.find('\nAbout the buyer')]
+        suppliers_string = suppliers_string.split('\n')
+        supplier_name = []
+        supplier_address = []
+        supplier_reference = []
+        supplier_sme = []
+        supplier_vcse = []
+        for line in range(len(suppliers_string)):
+            if suppliers_string[line] == "Show supplier information":
+                supplier_name.append(suppliers_string[line-1])
+                if suppliers_string[line+1].lower().startswith('address'):
+                    add_line = suppliers_string[line+1]
+                    supplier_address.append(add_line[7:add_line.find(' Reference')])
+                    supplier_reference.append(add_line[add_line.find(' Reference') + len(' Reference'):
+                                                       add_line.find('Supplier')])
+                    if 'Supplier is SME?Yes' in add_line:
+                        supplier_sme.append('Yes')
+                    else:
+                        supplier_sme.append('No')
+                    if 'Supplier is VCSE?Yes' in add_line:
+                        supplier_vcse.append('Yes')
+                    else:
+                        supplier_vcse.append('No')
+        page_dict['supplier_name'] = supplier_name
+        page_dict['supplier_address'] = supplier_address
+        page_dict['supplier_reference'] = supplier_reference
+        page_dict['supplier_is_VCSE'] = supplier_vcse
+        page_dict['supplier_is_SME'] = supplier_sme
+    except ValueError:
+        page_dict['supplier_name'] = np.nan
+        page_dict['supplier_address'] = np.nan
+        page_dict['supplier_reference'] = np.nan
+        page_dict['supplier_is_VCSE'] = np.nan
+        page_dict['supplier_is_SME'] = np.nan
     if 'Website' in string_version:
         page_dict['commissioner_website'] = string_version[string_version.find('Website') +
                                                            len('Website'):string_version.rfind('/')]
@@ -286,7 +362,6 @@ def main():
                     driver.back()
                     scrape_passed = True
                 except Exception as e:
-                    print(traceback.format_exc())
                     logger.debug('Problem scraping ' + str(counter) + '. Exception: ' + str(e))
                     logger.info('Taking a bit of a rest for a short while...')
                     time.sleep(360)
@@ -295,8 +370,15 @@ def main():
             scrape_passed = False
             counter += 1
             time.sleep(1)
-        WebDriverWait(driver, 20).until(EC.element_to_be_clickable(
-            (By.XPATH, ".//*[contains(@class, 'standard-paginate-next govuk-link break-word')]"))).click()
+        time.sleep(5)
+        while True:
+            try:
+                WebDriverWait(driver, 20).until(EC.element_to_be_clickable(
+                    (By.XPATH, ".//*[contains(@class, 'standard-paginate-next govuk-link break-word')]"))).click()
+                break
+            except TimeoutException:
+                driver.quit()
+                time.sleep(30)
 
 
 if __name__ == "__main__":
