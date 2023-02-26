@@ -375,9 +375,11 @@ def main():
             try:
                 WebDriverWait(driver, 20).until(EC.element_to_be_clickable(
                     (By.XPATH, ".//*[contains(@class, 'standard-paginate-next govuk-link break-word')]"))).click()
+                logger.info('Successfully moving onto page  ' + str(page_number))
                 break
             except TimeoutException:
                 driver.quit()
+                logger.debug('Problem moving onto ' + str(page_number) + '. Exception: ' + str(e))
                 time.sleep(30)
 
 
